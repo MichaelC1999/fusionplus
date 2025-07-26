@@ -1,0 +1,19 @@
+{
+  "dependencies": {
+    "@mysten/sui.js": "^0.54.1",
+    "dotenv": "^17.2.1",
+    "viem": "^2.33.0"
+  },
+  "name": "fusionplus",
+  "version": "1.0.0",
+  "main": "javascriptIteration.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}

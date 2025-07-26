@@ -1,0 +1,11 @@
+[package]
+name = "fusion_sui_escrow"
+version = "0.0.1"
+published-at = "0x0"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui", subdir = "crates/sui-framework/packages/sui-framework", rev = "devnet" }
+
+[addresses]
+fusionplusescrow = "0x0"
+coins="0x0"
