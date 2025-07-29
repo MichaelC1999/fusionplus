@@ -24,7 +24,6 @@ const ETHEREUM_ASSET_ADDRESS = "0xc2b2febab8f32732b4fad4b2d7f9f0f2bda3e2d11daa55
 const client = new SuiClient({ url: SUI_RPC });
 
 function decodeKeypair(bech32priv) {
-  console.log(bech32priv, 'GRAH')
   const { secretKey } = decodeSuiPrivateKey(bech32priv);
   console.log(secretKey)
   return Secp256r1Keypair.fromSecretKey(secretKey);
@@ -353,22 +352,22 @@ async function mainExecution() {
   // }, makerSigner);
 
 
-  const evmToSuiEscrowId = await depositDst({
-    sender: resolverKeypair.toSuiAddress(),
-    secretHash: keccak256(stringToHex("TestSecret")),
-    escrowAmount: 10_000000n,
-    safetyDepositAmount: 20000n,
-    recipient: makerKeypair.toSuiAddress(),
-    resolverKeypair: resolverKeypair 
-  })
+  // const evmToSuiEscrowId = await depositDst({
+  //   sender: resolverKeypair.toSuiAddress(),
+  //   secretHash: keccak256(stringToHex("TestSecret")),
+  //   escrowAmount: 10_000000n,
+  //   safetyDepositAmount: 20000n,
+  //   recipient: makerKeypair.toSuiAddress(),
+  //   resolverKeypair: resolverKeypair 
+  // })
 
-  console.log(evmToSuiEscrowId)
+  // console.log(evmToSuiEscrowId)
 
   //CHECK THE NEW ESCROW OBJECT BALANCE
 
   // await withdraw({escrowObjectId: "0x2ad6652a34dc83a09cae2b9f24efeb7668d26d3c2222e191639be0b7b9f62f95", secret: stringToHex("TestSecret"), keypair: resolverKeypair })
 
-  // await cancel({escrowObjectId: "0x471f8d7691f1be884abf828525bcd95247c9e7653a6479f431054f38219b9b3e", keypair: resolverKeypair})
+  await cancel({escrowObjectId: "0x461eb3e60a4728bbfb6798ed455bf2f6a520a4d5e26987b1e73f8240c4bfdb99", keypair: resolverKeypair})
 
 }
 

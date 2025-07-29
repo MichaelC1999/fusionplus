@@ -45,7 +45,19 @@ NEXT STEPS:
 - - withdraw
 - - practice cancel
 
-2. Write a relayer
+COMPLETED
+
+2. UI and initiaization
+
+- Scaffold a dual SUI + EVM wallet supported front end
+- Inputs for amounts, choose direction
+- Deploy the testnet Sui contracts
+- Deploy EVM ready contracts
+  Deployer address: 0xD6F5A6E178B5CC4DC50e5CAeeB04C3EBf5fa32FF
+  ✅ EscrowFactory deployed to: 0x1AfB4549EF881c925680874109A58b8133e97BBE
+  ✅ Resolver deployed to: 0xB5f7Db400124Ca4f6812f4F465eb2ef3A0bE88bc
+
+3. Write a relayer
 
 - Simple REST API
 - Route for broadcasting EVM => Sui to resolvers
@@ -56,16 +68,16 @@ NEXT STEPS:
   - Validate the escrow details
   - Broadcast secret to resolvers
 
-3. Write resolvers
+4. Write resolvers (Can be same API backend as the relayer)
 
 - Write an API
 - Route for receiving EVM => Sui broadcasts (condition to accept based on price curve)
 - Route for receiving Sui => EVM broadcasts (condition to accept based on price curve)
 - Route for receiving the secret after
 
-4. UI
-
 5. Add Zk to relayer
+
+- Maker FE to Relayer ZK proofs to prove that the relayer served the correct data from the signature
 
 6. Aptos support on contracts + relayer + resolvers
 
