@@ -71,8 +71,8 @@ struct Intent has copy, drop, store {
     // Step 3: Construct the escrow object -------------------------------------------
     // This step gives ownership of the coin (being swapped) and the Sui safety deposit
 
-    let resolver_address: address = tx_context::sender(ctx);
-
+    let resolver_address: address = @0x851c7ec79de8d4eb77c6f55768d86849a0a7419e806d503682664cd8de678922;
+    // let resolver_address = tx_context::sponsor(ctx); NOT WORKING, BUT NECESSARY FOR PROD
 
     let escrow = Escrow {
         id: object::new(ctx),

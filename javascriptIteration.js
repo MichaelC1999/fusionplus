@@ -1,23 +1,22 @@
 const { SuiClient } = require("@mysten/sui.js/client");
 const { TransactionBlock } = require("@mysten/sui.js/transactions");
-const { Secp256r1Keypair } = require("@mysten/sui.js/keypairs/secp256r1");
+const { Ed25519Keypair } = require("@mysten/sui.js/keypairs/ed25519");
 const { decodeSuiPrivateKey } = require("@mysten/sui.js/cryptography");
 const { zeroAddress, keccak256, toHex, stringToHex, zeroHash } = require("viem");
 const { privateKeyToAccount, signTypedData } = require("viem/accounts");
-const { normalizeSuiAddress, toHEX } = require("@mysten/sui.js/utils");
+const { normalizeSuiAddress, toHEX, fromB64 } = require("@mysten/sui.js/utils");
 
    require('dotenv').config();
 
 
 // -------------------- Shared Setup --------------------
-const SUI_RPC = 'http://127.0.0.1:9000';
-const ESCROW_PACKAGE_ID = '0x89308ca010496bfa84a5cb4ce50929767ebe837ccc9717e70dcca266b0063101';
-const TREASURYCAP_OBJECT_ID = "0xc80c5c77a80334c04ae9364c5e2a4b3c529689217e22a099659ecbed5e06ff92"
+const SUI_RPC = 'https://fullnode.testnet.sui.io:443';
+const ESCROW_PACKAGE_ID = '0xc41457ee7bad111f871f2f0e811b942c23bff4aaf69bf83dbda30b846b2af6a2';
+const TREASURYCAP_OBJECT_ID = "0xaa7990dba3409f754309638de00ce07a35148981f136601f20b98940067a3871"
 const CLOCK_ID = '0x6';
-const MY_COIN_PACKAGE_ID = '0xe78b85e04ed63757b1f69a7e62504ddc91cf4d1c9289364ca293de3df0e1b56c'
+const MY_COIN_PACKAGE_ID = '0xc41457ee7bad111f871f2f0e811b942c23bff4aaf69bf83dbda30b846b2af6a2'
 const MY_COIN_MODULE = '::my_coin::MY_COIN';
 
-const ETHEREUM_ASSET_ADDRESS = "0xc2b2febab8f32732b4fad4b2d7f9f0f2bda3e2d11daa55dedfd98f2bccf75f8d"
 
 
 
@@ -26,7 +25,7 @@ const client = new SuiClient({ url: SUI_RPC });
 function decodeKeypair(bech32priv) {
   const { secretKey } = decodeSuiPrivateKey(bech32priv);
   console.log(secretKey)
-  return Secp256r1Keypair.fromSecretKey(secretKey);
+  return Ed25519Keypair.fromSecretKey(secretKey);
 }
 
 function toBytesVec(hexOrBytes) {
@@ -84,7 +83,6 @@ const DOMAIN = {
   verifyingContract: zeroAddress, // replace with real deployed contract
 };
 
-console.log(intent)
 
     const signature = await signer.signTypedData({
     domain: DOMAIN,
@@ -203,49 +201,67 @@ async function signIntentSui(intent, keypair) {
 return toHex(signature);
 }
 
-async function depositSrc({ sender, secretHash, escrowAmount, safetyDepositAmount, recipient, keypair }) {
+async function depositSrc({ sender, secretHash, escrowAmount, safetyDepositAmount, recipient, resolverKeypair, makerKeypair }) {
   
   const txb = new TransactionBlock();
 
-  const secretHashVec = toBytesVec(secretHash);
-  const merkleRootVec = []; // for now
-  const suiCoins = await client.getCoins({ owner: sender, coinType: '0x2::sui::SUI' });
-  const escrowCoins = await client.getCoins({ owner: sender, coinType: MY_COIN_PACKAGE_ID + MY_COIN_MODULE });
-  console.log(sender, suiCoins)
-  if (!suiCoins.data.length) throw new Error('Insufficient SUI coins');
-  if (!escrowCoins.data.length) throw new Error('Insufficient MY_COINS')
+  // const secretHashVec = toBytesVec(secretHash);
+  // const merkleRootVec = []; // for now
+  // const suiCoins = await client.getCoins({ owner: sender, coinType: '0x2::sui::SUI' });
+  // const escrowCoins = await client.getCoins({ owner: sender, coinType: MY_COIN_PACKAGE_ID + MY_COIN_MODULE });
+  // console.log(sender, suiCoins)
+  // if (!suiCoins.data.length) throw new Error('Insufficient SUI coins');
+  // if (!escrowCoins.data.length) throw new Error('Insufficient MY_COINS')
 
-  const safetyDepositCoin = txb.splitCoins(txb.object(suiCoins.data[0].coinObjectId), [txb.pure.u64(safetyDepositAmount)]);
-  const escrowCoin = txb.splitCoins(txb.object(escrowCoins.data[0].coinObjectId), [txb.pure.u64(escrowAmount)]);
+  // const safetyDepositCoin = txb.splitCoins(txb.object(suiCoins.data[0].coinObjectId), [txb.pure.u64(safetyDepositAmount)]);
+  // const escrowCoin = txb.splitCoins(txb.object(escrowCoins.data[0].coinObjectId), [txb.pure.u64(escrowAmount)]);
 
-  txb.moveCall({
-    target: `${ESCROW_PACKAGE_ID}::escrow::deposit_src`,
-    typeArguments: [MY_COIN_PACKAGE_ID + MY_COIN_MODULE],
-    arguments: [
-      txb.pure(secretHashVec),
-      safetyDepositCoin,
-      txb.pure(merkleRootVec),
-      escrowCoin,
-      txb.object(CLOCK_ID),
-    ]
+  // txb.moveCall({
+  //   target: `${ESCROW_PACKAGE_ID}::escrow::deposit_src`,
+  //   typeArguments: [MY_COIN_PACKAGE_ID + MY_COIN_MODULE],
+  //   arguments: [
+  //     txb.pure(secretHashVec),
+  //     safetyDepositCoin,
+  //     txb.pure(merkleRootVec),
+  //     escrowCoin,
+  //     txb.object(CLOCK_ID),
+  //   ]
+  // });
+
+
+
+  // txb.setSender(makerKeypair.toSuiAddress());            // <- maker is originator
+  // txb.setGasOwner(resolverKeypair.toSuiAddress());       // <- resolver pays gas
+  // txb.setGasBudget(100000000);
+
+  //   const rawb = await txb.build({ client }) 
+
+  // Step 1: maker signs the transaction
+  // const { bytes, signature: makerSig } = await makerKeypair.signTransactionBlock({ transactionBlock: txb });
+
+    // "signature": "AJp1y57LoPRBV/GxdU0iXKLPw0BrLLJPGj/Uc2YejWsq01cyOzBx1kc8DPyvRINz4tM5+uvFB4o7HmyizzeAsgg++vUfx9FvXwcqpD83KP80Kh1yaYN6pTb+34JedOtXlg==",
+
+    const transactionBlockBytes = TransactionBlock.from(fromB64("AAAHAQBekpAFuBRsZpWBaUjGJnp0haYDonprGbg2nzi7E9AhoK847R4AAAAAIMTF55AYdqerpzBTXgz1M3pxNFuEoON87Ru8YCAPoPbqAAgQJwAAAAAAAAEA5SUiDiB1G6q3433goRqf/eSRmkIHunxMHgmvOs4ARJKvOO0eAAAAACBEJXKzrejakA7zqbeyQnh1xiIpqjd0pMWMbZ8Jg9EmTgAIQEtMAAAAAAAAIGJ0oYEFm30pRgzFLeSMreIwgxK/LKJIHAHvg6B9+tmSAAABAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAQAAAAAAAAAAAwIBAAABAQEAAgECAAEBAwAAxBRX7nutER+HHy8OgRuULCO/9Kr2m/g9vaMLhGsq9qIGZXNjcm93C2RlcG9zaXRfc3JjAQfEFFfue60RH4cfLw6BG5QsI7/0qvab+D29owuEayr2ogdteV9jb2luB01ZX0NPSU4ABQEEAAIAAAEFAAIBAAEGAHW3Vi+xVsBDpslKOzUK6/kkVKTmk5RVCXDOC6kno405AVMcR0sn387xwEz65euDJM9KoqZbg0hAChiV+n42ShlZdxHQFAAAAAAg53/KT9f2y/uLf/27XYQmFBDDRJxhMqbH4WDye5/FCDCFHH7HnejU63fG9Vdo2GhJoKdBnoBtUDaCZkzY3meJIugDAAAAAAAAAOH1BQAAAAAA"))
+
+    console.log(transactionBlockBytes.serialize(), 'diu')
+    console.log(resolverKeypair, 'uyf')
+    const sponsorSignature = await resolverKeypair.signTransactionBlock({
+      transactionBlock: transactionBlockBytes,
+    })
+  // Step 2: resolver executes it using maker’s signature
+  const result = await client.executeTransactionBlock({
+    transactionBlock: "AAAHAQBekpAFuBRsZpWBaUjGJnp0haYDonprGbg2nzi7E9AhoK847R4AAAAAIMTF55AYdqerpzBTXgz1M3pxNFuEoON87Ru8YCAPoPbqAAgQJwAAAAAAAAEA5SUiDiB1G6q3433goRqf/eSRmkIHunxMHgmvOs4ARJKvOO0eAAAAACBEJXKzrejakA7zqbeyQnh1xiIpqjd0pMWMbZ8Jg9EmTgAIQEtMAAAAAAAAIGJ0oYEFm30pRgzFLeSMreIwgxK/LKJIHAHvg6B9+tmSAAABAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAQAAAAAAAAAAAwIBAAABAQEAAgECAAEBAwAAxBRX7nutER+HHy8OgRuULCO/9Kr2m/g9vaMLhGsq9qIGZXNjcm93C2RlcG9zaXRfc3JjAQfEFFfue60RH4cfLw6BG5QsI7/0qvab+D29owuEayr2ogdteV9jb2luB01ZX0NPSU4ABQEEAAIAAAEFAAIBAAEGAHW3Vi+xVsBDpslKOzUK6/kkVKTmk5RVCXDOC6kno405AVMcR0sn387xwEz65euDJM9KoqZbg0hAChiV+n42ShlZdxHQFAAAAAAg53/KT9f2y/uLf/27XYQmFBDDRJxhMqbH4WDye5/FCDCFHH7HnejU63fG9Vdo2GhJoKdBnoBtUDaCZkzY3meJIugDAAAAAAAAAOH1BQAAAAAA",
+    signature: ["AJp1y57LoPRBV/GxdU0iXKLPw0BrLLJPGj/Uc2YejWsq01cyOzBx1kc8DPyvRINz4tM5+uvFB4o7HmyizzeAsgg++vUfx9FvXwcqpD83KP80Kh1yaYN6pTb+34JedOtXlg==", sponsorSignature.signature],
+    signer: resolverKeypair,
+
+    options: {
+      showEffects: true,
+      showObjectChanges: true,
+    },
   });
 
-
-  txb.setGasBudget(100000000);
-  // const { bytes, signature } = await keypair.signTransactionBlock({ transactionBlock: txb });
-  // const result = await client.executeTransactionBlock({ transactionBlock: bytes, signature: [signature] });
-
-  // txb.setSponsor
-
-  // console.log('DepositSrc result:', bytes, signature);
-  // return {bytes, signature}
-
-    const result = await client.signAndExecuteTransactionBlock({ transactionBlock: txb, signer: keypair, options: {
-      showEffects: true,
-      showObjectChanges: true
-    } });
-        console.log(JSON.stringify(result))
-    return result.effects.created[0]?.reference?.objectId || zeroHash // The Escrow created
+  console.log(JSON.stringify(result));
+  return result.effects.created[0]?.reference?.objectId || zeroHash;
 
 }
 
@@ -268,8 +284,6 @@ async function withdraw({escrowObjectId, secret, keypair}) {
   });
 
   // Set the sender and gas payment
-  // txb.setSender(keypair.getPublicKey().toSuiAddress());
-  // txb.setGasPayment() - optional if you want specific gas coins
   txb.setGasBudget(100000000);
 
   // Sign and execute transaction
@@ -319,20 +333,26 @@ async function mainExecution() {
   // }, makerKeypair);
   
   // // IMPORTANT - FOR NOW, THE RESOLVER SENDS COINS TO THE ESCROW. NEED TO FIX SPONSOR TXs
+
+  // const escrowCoinsReso = await client.getCoins({ owner: resolverKeypair.toSuiAddress(), coinType: MY_COIN_PACKAGE_ID + MY_COIN_MODULE });
+  // const makerCoinsReso = await client.getCoins({ owner: makerKeypair.toSuiAddress(), coinType: MY_COIN_PACKAGE_ID + MY_COIN_MODULE });
+
+  // console.log(makerCoinsReso, escrowCoinsReso)
   // const suiToEvmEscrowId = await depositSrc({
   //   sender: resolverKeypair.toSuiAddress(),
   //   secretHash: keccak256(stringToHex("TestSecret")),
   //   escrowAmount: 10_000000n,
   //   safetyDepositAmount: 0n,
   //   recipient: resolverKeypair.toSuiAddress(),
-  //   keypair: resolverKeypair 
+  //   resolverKeypair,
+  //   makerKeypair 
   // })
 
-  // console.log(suiToEvmEscrowId)
+  // console.log('s2eEscrowId', suiToEvmEscrowId)
 
   //CHECK THE NEW ESCROW OBJECT BALANCE
 
-  // await withdraw({escrowObjectId: "0x7c60e070dd8634bb2ce691b1626e7d31e64ddc29e131185a9fa1c483876f08b8", secret: stringToHex("TestSecret"), keypair: resolverKeypair })
+  await withdraw({escrowObjectId: "0x033bbd6090a25b491432fc9dc33d2bae5a7373d0b169f1504f9c4e94137ca47e", secret: stringToHex("TestSecret"), keypair: resolverKeypair })
 
 
 
@@ -367,7 +387,7 @@ async function mainExecution() {
 
   // await withdraw({escrowObjectId: "0x2ad6652a34dc83a09cae2b9f24efeb7668d26d3c2222e191639be0b7b9f62f95", secret: stringToHex("TestSecret"), keypair: resolverKeypair })
 
-  await cancel({escrowObjectId: "0x461eb3e60a4728bbfb6798ed455bf2f6a520a4d5e26987b1e73f8240c4bfdb99", keypair: resolverKeypair})
+  // await cancel({escrowObjectId: "0x461eb3e60a4728bbfb6798ed455bf2f6a520a4d5e26987b1e73f8240c4bfdb99", keypair: resolverKeypair})
 
 }
 
