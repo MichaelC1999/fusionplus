@@ -30,7 +30,7 @@ The maker signs the order off-chain
 
 The relayer (resolver) submits the transaction and pays for gas
 
-The contract reads both the depositor address (maker) and tx_context::sender() (resolver)
+The contract reads both the depositor address (maker) and tx_context::sponsor() (resolver)
 
 The resolver receives the safety deposit for executing or canceling the swap
 
