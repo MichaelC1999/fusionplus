@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import {config} from 'dotenv'
-import { compactSignatureToSignature, createWalletClient, recoverAddress, webSocket, zeroHash } from 'viem'
+import { compactSignatureToSignature, createPublicClient, createWalletClient, decodeEventLog, http, keccak256, pad, recoverAddress, toBytes, toHex, webSocket, zeroAddress, zeroHash } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { sepolia } from 'viem/chains'
 import { suiDepositDst, suiWithdrawDst } from './sui'
@@ -10,75 +10,106 @@ const RESOLVER_ABI = [{"type":"constructor","inputs":[{"name":"factory","type":"
 const router = Router()
 
 // hardcodes
-export const EVM_ASSET = '0xaa8e23fb1079ea71e0a56f48a2aa51851d8433d0' // Source token address
-export const resolverContractAddress = '0x8E4712636BF595D59c0137733E3cb4681F6185e2'
+export const evmUSDT = '0xaa8e23fb1079ea71e0a56f48a2aa51851d8433d0' // Source token address
 export const evmSafetyDeposit = '100000000' // Example: 0.001 ETH
-export const factoryAddress = "0x716D6047613769DfDe5422faE631Da38dEEa2E06"
+const resolverAddress = '0x787b77962010c893F2AA37895e2cD73a6F68599e' // Resolver contract address
+const ESCROW_FACTORY_ADDRESS = '0xC903AD0Bfc63D3e0A91E5f7ABE377596fA8E4444' // Replace with EscrowFactory address
 
 router.post('/relay-intent', async (req: any, res: any) => {
  
-    const secret = "TestSecret"
-
-
     //PARAMS RECEIVED BY FE
     const r = req.body.r
     const sv = req.body.sv
     const order = JSON.parse(req.body.order)
     const orderHash = req.body.orderHash
-    const salt = req.body.salt
+    const salt = order.salt
     const hashlock = req.body.hashlock
     const full32ByteSuiAddress = req.body.fullSuiRecipient // THE order.recipient IS THE LAST 20 BYTES OF THIS VALUE
-    
+    const extension = req.body.extension
+    const secret = req.body.secret
     
     const makingAmount = req.body.makingAmount
     const takingAmount = req.body.takingAmount
     
-
     //derived fields
-    const takerAddress = privateKeyToAccount(process.env.PRIVATE_KEY as any)?.address
     const sig = compactSignatureToSignature({r, yParityAndS: sv})
-    const MAKER_ADDRESS = await recoverAddress({hash: orderHash, signature: sig}) // Your address
+    const makerAddress = await recoverAddress({hash: orderHash, signature: sig})
 
-    
-    
     const immutables = {
         orderHash,
         hashlock: hashlock,
-        maker: MAKER_ADDRESS,
-        taker: takerAddress,
-        token: EVM_ASSET,
+        maker: makerAddress,
+        taker: resolverAddress,
+        token: evmUSDT,
         amount: makingAmount,
         safetyDeposit: evmSafetyDeposit,
         timelocks: "10"// Example timelocks
     }
 
 
-        const takerTraits = "61514547407324228818772085785865451047049679353621549645961841504203850121216"
-        const args = "0x"
+    const { traits, args: a } = buildTakerTraitsViem({
+    makingAmount: true,
+    extension: extension,
+    interaction: '0x',
+    });
+    console.log(order, immutables)
+    const evmDeposit = await resolverDepositSrc({immutables, order, r, sv, takerTraits: traits.toString(), args: a})
+    console.log(evmDeposit, 'evmDeosit')
+    const {tx: suiDeposit, escrowObjectId} = await suiDepositDst(takingAmount, full32ByteSuiAddress, secret)
+    res.json({
+        success: true,
+        data: {
+            evmDeposit:evmDeposit,
+            suiDeposit: suiDeposit,
+            evmEscrow: await getEvmEscrowSrc(evmDeposit),
+            suiEscrow: escrowObjectId
+        }
+    });
 
-        console.log(order, immutables)
-
-        const ethereumDepositHash = await resolverDepositSrc({immutables, order, resolverContractAddress, r, sv, takerTraits, args})
-        // IMPORTANT - NEED TO SEPARATE RELAYER (DECLARATIONS) FROM RESOLVERS (EXECUTION)
-        const {tx: suiDepositHash, escrowObjectId} = await suiDepositDst(takingAmount, full32ByteSuiAddress)
-
-        const ethereumWithdrawHash = await resolverWithdrawSrc()
-
-        const suiWithdrawhash = await suiWithdrawDst(escrowObjectId, secret)
-
-        console.log({ethereumDepositHash, suiDepositHash, ethereumWithdrawHash, suiWithdrawhash})
-        res.json({
-            success: true,
-            txs: {
-                ethereumDepositHash,
-                suiDepositHash,
-                ethereumWithdrawHash,
-                suiWithdrawhash
-            }
-        });
 })
 
-const resolverDepositSrc = async ({immutables, order, resolverContractAddress, r, sv, takerTraits, args}) => {
+router.post('/relay-secret', async (req: any, res: any) => {
+
+    const r = req.body.r
+    const sv = req.body.sv
+    const orderHash = req.body.orderHash
+    const hashlock = req.body.hashlock
+    const secret = req.body.secret
+    
+    const makingAmount = req.body.makingAmount
+    const takingAmount = req.body.takingAmount
+
+    const evmEscrow = req.body.evmEscrow
+    const suiEscrow = req.body.suiEscrow
+    
+    //derived fields
+    const sig = compactSignatureToSignature({r, yParityAndS: sv})
+    const makerAddress = await recoverAddress({hash: orderHash, signature: sig})
+
+    const immutables = {
+        orderHash,
+        hashlock: hashlock,
+        maker: makerAddress,
+        taker: resolverAddress,
+        token: evmUSDT,
+        amount: makingAmount,
+        safetyDeposit: evmSafetyDeposit,
+        timelocks: "10"// Example timelocks
+    }
+
+    const evmWithdraw = await resolverWithdrawSrc(immutables, toHex(pad(toBytes(secret), { size: 32 })), evmEscrow)
+    const suiWithdraw = await suiWithdrawDst(suiEscrow, secret)
+    res.json({
+        success: true,
+        data: {
+            evmWithdraw,
+            suiWithdraw
+        }
+    });
+})
+
+
+const resolverDepositSrc = async ({immutables, order, r, sv, takerTraits, args}) => {
     // deposit to evm
     try {
         const wallet = createWalletClient({
@@ -89,7 +120,7 @@ const resolverDepositSrc = async ({immutables, order, resolverContractAddress, r
 
 
         const txHash = await await wallet.writeContract({
-            address: resolverContractAddress,
+            address: resolverAddress,
             abi: RESOLVER_ABI,
             functionName: 'deploySrc',
             args: [immutables, order, r, sv, immutables.amount, takerTraits, args],
@@ -109,13 +140,46 @@ const resolverDepositSrc = async ({immutables, order, resolverContractAddress, r
 }
 
 
-const resolverWithdrawSrc = async () => {
-    return zeroHash
-    
+const resolverWithdrawSrc = async  (immutables, hexSecret, evmEscrowAddress) => {
+
+  const wallet = createWalletClient({
+      account: privateKeyToAccount(process.env.PRIVATE_KEY as any),
+      chain: sepolia,
+      transport: webSocket("wss://sepolia.infura.io/ws/v3/2FmomdoPjwHwbT7K8gDYR4boBoD"),
+  });          
+  // use ethereumDepositHash to read logs and get the escrow address
+  const txHash = await wallet.writeContract({
+    address: resolverAddress,
+    abi: RESOLVER_ABI,
+    functionName: 'withdraw',
+    args: [evmEscrowAddress, hexSecret, immutables],
+    gas: "4000000"
+  } as any)
+
+  console.log(txHash)
+
+  return txHash    
 }
 
-export const evmWithdrawDst = async () => {
-    return zeroHash
+export const evmWithdrawDst = async (immutables, hexSecret, evmEscrowAddress) => {
+
+  const wallet = createWalletClient({
+      account: privateKeyToAccount(process.env.PRIVATE_KEY as any),
+      chain: sepolia,
+      transport: webSocket("wss://sepolia.infura.io/ws/v3/2FmomdoPjwHwbT7K8gDYR4boBoD"),
+  });
+
+
+  const txHash = await wallet.writeContract({
+    address: resolverAddress,
+    abi: RESOLVER_ABI,
+    functionName: 'withdraw',
+    args: [evmEscrowAddress, hexSecret, immutables],
+    gas: "4000000"
+  } as any)
+  
+  console.log(txHash)
+  return txHash
 }
 
 export const evmDepositDst = async (immutables) => {
@@ -129,8 +193,8 @@ export const evmDepositDst = async (immutables) => {
         console.log(immutables)
 
 
-        const txHash = await await wallet.writeContract({
-            address: factoryAddress,
+        const txHash = await wallet.writeContract({
+            address: ESCROW_FACTORY_ADDRESS,
             abi: RESOLVER_ABI,
             functionName: 'createDstEscrow',
             args: [immutables, "0"],
@@ -148,6 +212,137 @@ export const evmDepositDst = async (immutables) => {
 
     return zeroHash
 
+}
+
+export const getEvmEscrowDst = async (depositTx) => {
+              const publicClient = createPublicClient({
+              chain: sepolia,
+              transport: http('https://sepolia.gateway.tenderly.co'), // Optionally provide a custom RPC URL inside http("https://...")
+            })
+            let evmEscrowAddress = zeroAddress
+            try {
+              const receipt = await publicClient.waitForTransactionReceipt({ hash: depositTx })
+
+  // 2. Calculate the event signature hash
+  const eventSignature = 'DstEscrowCreated(address,bytes32,uint256)'
+  const eventTopic = keccak256(Buffer.from(eventSignature))
+
+  // 3. Find the log with this topic
+  const matchingLog: any = receipt.logs.find((log: any) => log.topics[0] === eventTopic)
+  if (!matchingLog) console.log('DstEscrowCreated event not found in logs ', receipt.logs)
+
+  // 4. Decode the log
+  const decoded: any = decodeEventLog({
+    abi: [{
+      type: 'event',
+      name: 'DstEscrowCreated',
+      inputs: [
+        { indexed: false, name: 'escrow', type: 'address' },
+        { indexed: false, name: 'hashlock', type: 'bytes32' },
+        { indexed: false, name: 'taker', type: 'uint256' }
+      ]
+    }],
+    data: matchingLog.data,
+    topics: matchingLog.topics,
+  })
+
+
+        evmEscrowAddress = decoded?.args?.escrow
+
+        console.log(evmEscrowAddress, 'EVM ESCROW')
+
+} catch (err) {
+    console.log("ERRROR::: ", err)
+}
+      console.log(evmEscrowAddress, 'EVM ESCROW')
+return evmEscrowAddress
+
+}
+
+export const getEvmEscrowSrc = async (depositTx) => {
+  const publicClient = createPublicClient({
+  chain: sepolia,
+  transport: http('https://sepolia.gateway.tenderly.co'), // Optionally provide a custom RPC URL inside http("https://...")
+})
+let evmEscrowAddress = zeroAddress
+try {
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: depositTx })
+
+  // 2. Calculate the event signature hash
+  const eventSignature = 'Transfer(address,address,uint256)'
+  const eventTopic = keccak256(Buffer.from(eventSignature))
+
+  // 3. Find matching Transfer event log
+  const matchingLog: any = receipt.logs.find((log: any) => log.topics[0] === eventTopic)
+  if (!matchingLog) throw new Error('Transfer event not found in logs')
+
+  // 4. Decode the log using Viem
+  const decoded: any = decodeEventLog({
+    abi: [{
+      type: 'event',
+      name: 'Transfer',
+      inputs: [
+        { indexed: true, name: 'from', type: 'address' },
+        { indexed: true, name: 'to', type: 'address' },
+        { indexed: false, name: 'value', type: 'uint256' },
+      ]
+    }],
+    data: matchingLog.data,
+    topics: matchingLog.topics,
+  })
+
+        evmEscrowAddress = decoded?.args?.to
+
+        
+      } catch (err) {
+        console.log("ERRROR::: ", err)
+      }
+      console.log(evmEscrowAddress, 'EVM ESCROW')
+return evmEscrowAddress
+}
+
+function buildTakerTraitsViem({
+  makingAmount = false,
+  unwrapWeth = false,
+  skipMakerPermit = false,
+  usePermit2 = false,
+  target = '0x',
+  extension = '0x',
+  interaction = '0x',
+  threshold = 0n,
+} = {}) {
+  const MAKER_AMOUNT_FLAG = 1n << 255n;
+  const UNWRAP_WETH_FLAG = 1n << 254n;
+  const SKIP_ORDER_PERMIT_FLAG = 1n << 253n;
+  const USE_PERMIT2_FLAG = 1n << 252n;
+  const ARGS_HAS_TARGET = 1n << 251n;
+
+  const ARGS_EXTENSION_LENGTH_OFFSET = 224n;
+  const ARGS_INTERACTION_LENGTH_OFFSET = 200n;
+
+  const clean = (hex) => hex.replace(/^0x/, '').toLowerCase();
+
+  let traits = BigInt(threshold);
+
+  if (makingAmount) traits |= MAKER_AMOUNT_FLAG;
+  if (unwrapWeth) traits |= UNWRAP_WETH_FLAG;
+  if (skipMakerPermit) traits |= SKIP_ORDER_PERMIT_FLAG;
+  if (usePermit2) traits |= USE_PERMIT2_FLAG;
+  traits |= ARGS_HAS_TARGET;
+
+  const extLen = BigInt(clean(extension).length / 2);
+  const intLen = BigInt(clean(interaction).length / 2);
+
+  traits |= extLen << ARGS_EXTENSION_LENGTH_OFFSET;
+  traits |= intLen << ARGS_INTERACTION_LENGTH_OFFSET;
+  
+
+  const args = '0x' + clean(target) + clean(extension) + clean(interaction);
+
+  return {
+    traits,
+    args,
+  };
 }
 
 export default router

@@ -1,2 +1,5 @@
 build/*
 node_modules
+swap-ui/node_modules
+swap-ui/.next
+swap-ui/swap-ui
