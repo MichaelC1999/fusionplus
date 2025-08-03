@@ -5,14 +5,14 @@
 - sui client gas
 - sui client publish --gas-budget 100000000 --skip-dependency-verification
 
-Minting Test Coins (To be swapped)
+Minting Test Coins for Sui to EVM swaps
 
 ```
 sui client call \
   --function mint \
   --module my_coin \
-  --package <PACKAGE_ID> \
-  --args <TREASURY_CAP_OBJECT_ID> <AMOUNT> <RECIPIENT_ADDRESS> \
+  --package 0xc41457ee7bad111f871f2f0e811b942c23bff4aaf69bf83dbda30b846b2af6a2 \
+  --args 0xaa7990dba3409f754309638de00ce07a35148981f136601f20b98940067a3871 <AMOUNT> <RECIPIENT_ADDRESS> \
   --gas-budget 100000000
 ```
 
